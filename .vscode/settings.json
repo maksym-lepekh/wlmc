@@ -1,0 +1,6 @@
+{
+    "clangd.path": "clangd-22",
+    "clangd.arguments": [
+        "--compile-commands-dir=cmake-build-default"
+    ]
+}

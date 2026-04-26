@@ -1,0 +1,53 @@
+{
+  "version": 10,
+  "cmakeMinimumRequired": {
+    "major": 4,
+    "minor": 2,
+    "patch": 0
+  },
+  "configurePresets": [
+    {
+      "hidden": true,
+      "generator": "Ninja",
+      "binaryDir": "${sourceDir}/cmake-build-${presetName}",
+      "name": "common",
+      "warnings": {
+        "dev": false
+      }
+    },
+    {
+      "name": "default",
+      "inherits": [
+        "common"
+      ],
+      "cacheVariables": {
+        "CMAKE_CXX_COMPILER": "clang++-22"
+      }
+    }
+  ],
+  "workflowPresets": [
+    {
+      "name": "default",
+      "steps": [
+        {
+          "name": "default",
+          "type": "configure"
+        },
+        {
+          "name": "default",
+          "type": "build"
+        }
+      ]
+    }
+  ],
+  "buildPresets": [
+    {
+      "configurePreset": "default",
+      "name": "default"
+    }
+  ],
+  "include": [],
+  "testPresets": [],
+  "packagePresets": [],
+  "vendor": {}
+}
