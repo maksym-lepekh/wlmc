@@ -6,4 +6,5 @@ set(CMAKE_CXX_MODULE_STD ON)
 cmake_minimum_required(VERSION 4.2)
 project(wlmc LANGUAGES CXX)
 
+include(cmake/CPM.cmake)
 add_subdirectory(src)
