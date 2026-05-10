@@ -13,6 +13,7 @@
 
 
 import observer;
+import core_wayland;
 
 constexpr auto runtime_dir_var = "XDG_RUNTIME_DIR";
 constexpr auto wayland_display_var = "WAYLAND_DISPLAY";
@@ -52,6 +53,10 @@ std::optional<fs::path> get_child_socket_path()
     return fs::path{runtime_dir} / std::format("wlmc-{}", ::getpid());
 }
 
+void register_wayland_interfaces()
+{
+    proto::wayland::register_wl_interfaces();
+}
 
 int main(int argc, char** argv)
 {
@@ -123,6 +128,7 @@ int main(int argc, char** argv)
 
     spdlog::info("Child process ID: {}", child_pid);
 
+    register_wayland_interfaces();
     auto acceptor = std::jthread{[child_fd, socket_path = *server_soket_path](const std::stop_token& token)
     {
         auto child_threads = std::vector<std::jthread>{};
