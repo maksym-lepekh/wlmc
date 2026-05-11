@@ -22,7 +22,7 @@ export namespace wire
 
 template <> struct fmt::formatter<wire::object_t>
 {
-    constexpr auto parse (format_parse_context& ctx)
+    static constexpr auto parse (const format_parse_context& ctx)
     {
         return ctx.begin();
     }

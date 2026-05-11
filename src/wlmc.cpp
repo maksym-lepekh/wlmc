@@ -11,9 +11,8 @@
 #include <spdlog/spdlog.h>
 #include "control_flow.hpp"
 
-
 import observer;
-import core_wayland;
+import proto_wayland;
 
 constexpr auto runtime_dir_var = "XDG_RUNTIME_DIR";
 constexpr auto wayland_display_var = "WAYLAND_DISPLAY";

@@ -14,15 +14,12 @@ size_t inspect_message(std::span<std::byte> data, wire::msg_kind kind)
 {
     auto cursor = data.data();
 
-    // Message header
-    // Word 1: object
-    // Work 2: len | opcode
     const auto obj = *reinterpret_cast<wire::object_t*>(cursor);
     cursor += sizeof(wire::object_t);
+
     const auto len_opcode = *reinterpret_cast<std::uint32_t*>(cursor);
     const auto len = len_opcode >> 16;
     const auto opcode = len_opcode & 0x00FF;
-    // const auto kind_str = kind == wire::msg_kind::request ? "[request]" : "[ event ]";
     interface_base::dispatch(obj, kind, opcode, data.subspan(8, len - 8));
     return len;
 }
