@@ -39,8 +39,47 @@ void emit_begin_handlers_array(dest_t dest)
 
 void emit_silent_handler(dest_t dest, pugi::xml_node& node)
 {
-    // todo
-    std::format_to(dest, "                {},\n", "noop_handler");
+    constexpr auto indent = "                "sv;
+    std::format_to(dest, "{}{}\n{}{{\n", indent, "[](wire::object_t, std::span<std::byte> args)", indent);
+
+    for (auto& arg : node.children())
+    {
+        if (arg.name() == "arg"sv && arg.attribute("type").as_string() == "new_id"sv)
+        {
+            std::format_to(dest, "{}    wire::object_t arg_{};\n", indent, arg.attribute("name").as_string());
+        }
+    }
+
+    for (auto& arg : node.children())
+    {
+        if (arg.name() == "arg"sv)
+        {
+            auto arg_type = std::string_view(arg.attribute("type").as_string());
+            if (arg_type == "new_id")
+            {
+                std::format_to(dest, "{}    std::tie(arg_{}, args) = read_object_id(args);\n", indent, arg.attribute("name").as_string());
+                std::format_to(dest, "{}    on_new_object(arg_{}, \"{}\");\n", indent, arg.attribute("name").as_string(), arg.attribute("interface").as_string());
+            }
+            else
+            {
+                if (arg_type == "object" || arg_type == "uint" || arg_type == "int" || arg_type == "fixed")
+                {
+                    std::format_to(dest, "{}    args = skip_word(args);\n", indent);
+                }
+                else if (arg_type == "string" || arg_type == "array")
+                {
+                    std::format_to(dest, "{}    args = skip_multi_word(args);\n", indent);
+                }
+                else if (arg_type != "fd")
+                {
+                    std::println("Error: unexpected arg type: {}", arg_type);
+                    exit(EXIT_FAILURE);
+                }
+            }
+        }
+    }
+
+    std::format_to(dest, "{}}},\n", indent);
 }
 
 void emit_end_handlers_array(dest_t dest)

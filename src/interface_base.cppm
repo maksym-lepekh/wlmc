@@ -47,8 +47,8 @@ public:
     static void dispatch(wire::object_t obj, wire::msg_kind kind, uint16_t opcode, bytes_t args);
     static void register_interface(std::string_view name, const handler_table_t& silent_vtable, const handler_table_t& logging_vtable);
     static void on_new_object(wire::object_t obj, std::string_view interface_name);
+    static void on_deleted_object(wire::object_t obj);
 
-protected:
     static inline auto noop_handler = [](wire::object_t, bytes_t){};
 
     static bytes_t skip_word(bytes_t bytes);
@@ -64,7 +64,7 @@ public:
     static inline std::unordered_map<std::string_view, handler_table_t> logging_map = {};
 
 private:
-    static inline thread_local std::unordered_map<wire::object_t, std::string_view> known_objects = {};
+    static inline thread_local std::unordered_map<wire::object_t, std::string> known_objects = {};
 };
 
 
@@ -77,15 +77,19 @@ void interface_base::dispatch(wire::object_t obj, wire::msg_kind kind, uint16_t 
         return;
     }
 
-    auto impl = logging_map.find(found->second);
-    if (impl != logging_map.end())
+    auto impl = silent_map.find(found->second);
+    if (impl != silent_map.end())
     {
         if (opcode >= impl->second[kind].size())
         {
-            spdlog::error("Opcode {} out of range of {}'s vtable", opcode, impl->first);
+            spdlog::error("Opcode {} out of range of {}'s vtable. Object: {}", opcode, impl->first, obj);
             return;
         }
         impl->second[kind][opcode](obj, args);
+    }
+    else
+    {
+        spdlog::warn("No interface impl for {}<{}>", obj, found->second);
     }
 }
 
@@ -97,7 +101,14 @@ void interface_base::register_interface(const std::string_view name, const handl
 
 void interface_base::on_new_object(wire::object_t obj, std::string_view interface_name)
 {
+    spdlog::info("on_new_object: {} {}", obj, interface_name);
     known_objects[obj] = interface_name;
+}
+
+void interface_base::on_deleted_object(wire::object_t obj)
+{
+    spdlog::info("on_deleted_object: {}", obj);
+    known_objects.erase(obj);
 }
 
 interface_base::bytes_t interface_base::skip_word(bytes_t bytes)

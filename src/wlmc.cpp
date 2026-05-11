@@ -12,6 +12,7 @@
 #include "control_flow.hpp"
 
 import observer;
+import interface_base;
 import proto_wayland;
 
 constexpr auto runtime_dir_var = "XDG_RUNTIME_DIR";
@@ -52,9 +53,54 @@ std::optional<fs::path> get_child_socket_path()
     return fs::path{runtime_dir} / std::format("wlmc-{}", ::getpid());
 }
 
+struct custom_wl_registry final : interface_base
+{
+    static inline thread_local std::unordered_map<wire::uint_t, std::string> known_interfaces = {};
+
+    static inline handler_table_t silent_impl = {
+        handler_vector_t{
+            [](wire::object_t obj, std::span<std::byte> args)
+            {
+                wire::uint_t arg_name;
+                wire::string_t internal_name;
+                wire::uint_t internal_ver;
+                wire::object_t arg_id;
+
+                std::tie(arg_name, args) = read_uint(args);
+                std::tie(internal_name, args) = read_string(args);
+                std::tie(internal_ver, args) = read_uint(args);
+                std::tie(arg_id, args) = read_object_id(args);
+
+                spdlog::info("{}<wl_registry>::bind({}, [{}, {}, {}])", obj, arg_name, internal_name, internal_ver, arg_id);
+                on_new_object(arg_id, internal_name);
+            },
+        },
+        handler_vector_t{
+            noop_handler,
+            noop_handler,
+        },
+    };
+    static inline handler_table_t logging_impl = {
+        handler_vector_t{
+            noop_handler,
+        },
+        handler_vector_t{
+            noop_handler,
+            noop_handler,
+        },
+    };
+};
+
 void register_wayland_interfaces()
 {
     proto::wayland::register_wl_interfaces();
+    interface_base::register_interface("wl_registry", custom_wl_registry::silent_impl, custom_wl_registry::logging_impl);
+    interface_base::silent_map["wl_display"][wire::msg_kind::event][1] = [](wire::object_t, std::span<std::byte> args)
+    {
+        wire::object_t arg_id;
+        std::tie(arg_id, args) = interface_base::read_object_id(args);
+        interface_base::on_deleted_object(arg_id);
+    };
 }
 
 int main(int argc, char** argv)
