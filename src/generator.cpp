@@ -25,6 +25,30 @@ void emit_begin_interface(dest_t dest, pugi::xml_node& node)
     std::format_to(dest, "    struct {} final : interface_base\n    {{\n", node.attribute("name").as_string());
 }
 
+void emit_request_event_enums(dest_t dest, pugi::xml_node& node)
+{
+    constexpr auto indent = "        ";
+    std::format_to(dest, "{}enum request{{\n", indent);
+    for (auto& ch: node.children())
+    {
+        if (ch.name() == "request"sv)
+        {
+            std::format_to(dest, "{}    {},\n", indent, ch.attribute("name").as_string());
+        }
+    }
+    std::format_to(dest, "{}}};\n", indent);
+
+    std::format_to(dest, "{}enum event{{\n", indent);
+    for (auto& ch: node.children())
+    {
+        if (ch.name() == "event"sv)
+        {
+            std::format_to(dest, "{}    {},\n", indent, ch.attribute("name").as_string());
+        }
+    }
+    std::format_to(dest, "{}}};\n", indent);
+}
+
 void emit_begin_silent_handlers(dest_t dest)
 {
     constexpr auto text = "        static inline handler_table_t silent_impl = {\n"sv;
@@ -40,13 +64,19 @@ void emit_begin_handlers_array(dest_t dest)
 void emit_silent_handler(dest_t dest, pugi::xml_node& node)
 {
     constexpr auto indent = "                "sv;
-    std::format_to(dest, "{}{}\n{}{{\n", indent, "[](wire::object_t, std::span<std::byte> args)", indent);
+    std::format_to(dest, "{}{}\n{}{{\n", indent, "[](wire::object_t obj, std::span<std::byte> args)", indent);
 
     for (auto& arg : node.children())
     {
         if (arg.name() == "arg"sv && arg.attribute("type").as_string() == "new_id"sv)
         {
-            std::format_to(dest, "{}    wire::object_t arg_{};\n", indent, arg.attribute("name").as_string());
+            auto name = arg.attribute("name").as_string();
+            if (arg.attribute("interface").empty())
+            {
+                std::format_to(dest, "{}    wire::string_t arg_{}_if;\n", indent, name);
+                std::format_to(dest, "{}    wire::uint_t arg_{}_ver;\n", indent, name);
+            }
+            std::format_to(dest, "{}    wire::object_t arg_{};\n", indent, name);
         }
     }
 
@@ -57,8 +87,21 @@ void emit_silent_handler(dest_t dest, pugi::xml_node& node)
             auto arg_type = std::string_view(arg.attribute("type").as_string());
             if (arg_type == "new_id")
             {
-                std::format_to(dest, "{}    std::tie(arg_{}, args) = read_object_id(args);\n", indent, arg.attribute("name").as_string());
-                std::format_to(dest, "{}    on_new_object(arg_{}, \"{}\");\n", indent, arg.attribute("name").as_string(), arg.attribute("interface").as_string());
+                auto name = arg.attribute("name").as_string();
+                if (arg.attribute("interface").empty())
+                {
+                    std::format_to(dest, "{}    std::tie(arg_{}_if, args) = read_string(args);\n", indent, name);
+                    std::format_to(dest, "{}    std::tie(arg_{}_ver, args) = read_uint(args);\n", indent, name);
+                }
+                std::format_to(dest, "{}    std::tie(arg_{}, args) = read_object_id(args);\n", indent, name);
+                if (arg.attribute("interface").empty())
+                {
+                    std::format_to(dest, "{}    on_new_object(arg_{}, arg_{}_if);\n", indent, name, name);
+                }
+                else
+                {
+                    std::format_to(dest, "{}    on_new_object(arg_{}, \"{}\");\n", indent, name, arg.attribute("interface").as_string());
+                }
             }
             else
             {
@@ -77,6 +120,11 @@ void emit_silent_handler(dest_t dest, pugi::xml_node& node)
                 }
             }
         }
+    }
+
+    if (node.attribute("type").as_string() == "destructor"sv)
+    {
+        std::format_to(dest, "{}    on_deleted_object(obj);\n", indent);
     }
 
     std::format_to(dest, "{}}},\n", indent);
@@ -182,6 +230,7 @@ int main(int argc, char** argv)
         }
 
         emit_begin_interface(dest, ch);
+        emit_request_event_enums(dest, ch);
         emit_begin_silent_handlers(dest);
         emit_begin_handlers_array(dest);
         for (auto& item: ch.children())

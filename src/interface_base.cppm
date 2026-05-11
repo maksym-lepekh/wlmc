@@ -73,7 +73,7 @@ void interface_base::dispatch(wire::object_t obj, wire::msg_kind kind, uint16_t 
     auto found = known_objects.find(obj);
     if (found == known_objects.end())
     {
-        spdlog::warn("Unknown object: {}", obj);
+        spdlog::debug("Unknown object: {}", obj);
         return;
     }
 
@@ -89,7 +89,7 @@ void interface_base::dispatch(wire::object_t obj, wire::msg_kind kind, uint16_t 
     }
     else
     {
-        spdlog::warn("No interface impl for {}<{}>", obj, found->second);
+        spdlog::debug("No interface impl for {}<{}>", obj, found->second);
     }
 }
 
@@ -101,13 +101,13 @@ void interface_base::register_interface(const std::string_view name, const handl
 
 void interface_base::on_new_object(wire::object_t obj, std::string_view interface_name)
 {
-    spdlog::info("on_new_object: {} {}", obj, interface_name);
+    spdlog::debug("on_new_object: {} {}", obj, interface_name);
     known_objects[obj] = interface_name;
 }
 
 void interface_base::on_deleted_object(wire::object_t obj)
 {
-    spdlog::info("on_deleted_object: {}", obj);
+    spdlog::debug("on_deleted_object: {}", obj);
     known_objects.erase(obj);
 }
 
@@ -137,7 +137,7 @@ std::pair<wire::int_t, interface_base::bytes_t> interface_base::read_int(bytes_t
 
 std::pair<wire::string_t, interface_base::bytes_t> interface_base::read_string(bytes_t bytes)
 {
-    auto len = *reinterpret_cast<std::uint32_t*>(bytes.data());
+    auto len = *reinterpret_cast<std::uint32_t*>(bytes.data()) - 1;
     auto padded = 4 * (len / 4) + (len % 4 ? 4 : 0);
     return {std::string_view{reinterpret_cast<const char*>(bytes.data() + 4), len}, bytes.subspan(4 + padded)};
 }
