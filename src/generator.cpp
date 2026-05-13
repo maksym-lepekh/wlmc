@@ -93,7 +93,7 @@ void emit_silent_handler(dest_t dest, pugi::xml_node& node)
                     std::format_to(dest, "{}    std::tie(arg_{}_if, args) = read_string(args);\n", indent, name);
                     std::format_to(dest, "{}    std::tie(arg_{}_ver, args) = read_uint(args);\n", indent, name);
                 }
-                std::format_to(dest, "{}    std::tie(arg_{}, args) = read_object_id(args);\n", indent, name);
+                std::format_to(dest, "{}    std::tie(arg_{}, args) = read_object(args);\n", indent, name);
                 if (arg.attribute("interface").empty())
                 {
                     std::format_to(dest, "{}    on_new_object(arg_{}, arg_{}_if);\n", indent, name, name);
@@ -150,8 +150,111 @@ void emit_begin_logging_handlers(dest_t dest)
 
 void emit_logging_handler(dest_t dest, pugi::xml_node& node)
 {
-    // todo
-    std::format_to(dest, "                {},\n", "noop_handler");
+    constexpr auto indent = "                "sv;
+    std::format_to(dest, "{}{}\n{}{{\n", indent, "[](wire::object_t obj, std::span<std::byte> args)", indent);
+
+    for (auto& arg : node.children())
+    {
+        if (arg.name() != "arg"sv)
+        {
+            continue;
+        }
+
+        auto name = arg.attribute("name").as_string();
+        auto type_name = std::string_view{arg.attribute("type").as_string()};
+        if (type_name == "new_id")
+        {
+            if (arg.attribute("interface").empty())
+            {
+                std::format_to(dest, "{}    wire::string_t arg_{}_if;\n", indent, name);
+                std::format_to(dest, "{}    wire::uint_t arg_{}_ver;\n", indent, name);
+            }
+            std::format_to(dest, "{}    wire::object_t arg_{};\n", indent, name);
+        }
+        else if (type_name  != "fd")
+        {
+            std::format_to(dest, "{}    wire::{}_t arg_{};\n", indent, type_name, name);
+        }
+    }
+
+    // arg_name, var_name, iface_suffix, runtime_iface
+    auto processed_args = std::vector<std::tuple<std::string, std::string, std::string, std::string>>{};
+
+    for (auto& arg : node.children())
+    {
+        if (arg.name() != "arg"sv)
+        {
+            continue;
+        }
+
+        auto name = arg.attribute("name").as_string();
+        auto type_name = std::string_view{arg.attribute("type").as_string()};
+
+        if (type_name == "new_id")
+        {
+            if (arg.attribute("interface").empty())
+            {
+                std::format_to(dest, "{}    std::tie(arg_{}_if, args) = read_string(args);\n", indent, name);
+                std::format_to(dest, "{}    std::tie(arg_{}_ver, args) = read_uint(args);\n", indent, name);
+            }
+            std::format_to(dest, "{}    std::tie(arg_{}, args) = read_object(args);\n", indent, name);
+            if (arg.attribute("interface").empty())
+            {
+                std::format_to(dest, "{}    on_new_object(arg_{}, arg_{}_if);\n", indent, name, name);
+                processed_args.emplace_back(name, std::format("arg_{}", name), "<{}>", std::format("arg_{}_if", name));
+            }
+            else
+            {
+                std::format_to(dest, "{}    on_new_object(arg_{}, \"{}\");\n", indent, name, arg.attribute("interface").as_string());
+                processed_args.emplace_back(name, std::format("arg_{}", name), std::format("<{}>", arg.attribute("interface").as_string()), "");
+            }
+        }
+        else if (type_name  != "fd")
+        {
+            std::format_to(dest, "{}    std::tie(arg_{}, args) = read_{}(args);\n", indent, name, type_name);
+            processed_args.emplace_back(name, std::format("arg_{}", name), "", "");
+        }
+        else
+        {
+            processed_args.emplace_back(name, "\"[fd]\"", "", "");
+        }
+    }
+
+    // "[ req ] {}<wl_display>::get_registry(registry={}<wl_registry>)"
+
+    auto kind = node.name() == "request"sv ? "[ req ]" : "[event]";
+    std::format_to(dest, "{}    spdlog::info(\"{} {{}}<{}>::{}(", indent, kind, node.parent().attribute("name").as_string(), node.attribute("name").as_string());
+    bool first = true;
+    for (auto& [arg_name, var_name, iface_suffix, runtime_iface]: processed_args)
+    {
+        if (first)
+        {
+            first = false;
+        }
+        else
+        {
+            std::format_to(dest, "{}", ",");
+        }
+
+        std::format_to(dest, "{}={{}}{}", arg_name, iface_suffix);
+    }
+    std::format_to(dest, "{}", ")\", obj");
+    for (auto& [arg_name, var_name, iface_suffix, runtime_iface]: processed_args)
+    {
+        std::format_to(dest, ",{}", var_name);
+        if (!runtime_iface.empty())
+        {
+            std::format_to(dest, ",{}", runtime_iface);
+        }
+    }
+    std::format_to(dest, "{}", ");\n");
+
+    if (node.attribute("type").as_string() == "destructor"sv)
+    {
+        std::format_to(dest, "{}    on_deleted_object(obj);\n", indent);
+    }
+
+    std::format_to(dest, "{}}},\n", indent);
 }
 
 void emit_end_logging_handlers(dest_t dest)

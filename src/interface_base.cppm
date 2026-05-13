@@ -12,6 +12,7 @@ export namespace wire
     using new_id_t = object_t;
     using string_t = std::string_view;
     using array_t = std::span<std::byte>;
+    using fixed_t = std::uint32_t;
 
     enum msg_kind
     {
@@ -36,6 +37,20 @@ template <> struct fmt::formatter<wire::object_t>
     }
 };
 
+template <> struct fmt::formatter<wire::array_t>
+{
+    static constexpr auto parse (const format_parse_context& ctx)
+    {
+        return ctx.begin();
+    }
+
+    template <typename Context>
+    constexpr auto format (wire::array_t const& a, Context& ctx) const
+    {
+        return format_to(ctx.out(), "[{} bytes]", a.size());
+    }
+};
+
 export class interface_base
 {
 public:
@@ -57,7 +72,8 @@ public:
     static std::pair<wire::int_t, bytes_t> read_int(bytes_t bytes);
     static std::pair<wire::string_t, bytes_t> read_string(bytes_t bytes);
     static std::pair<wire::array_t, bytes_t> read_array(bytes_t bytes);
-    static std::pair<wire::object_t, bytes_t> read_object_id(bytes_t bytes);
+    static std::pair<wire::object_t, bytes_t> read_object(bytes_t bytes);
+    static std::pair<wire::fixed_t, bytes_t> read_fixed(bytes_t bytes);
 
 public:
     static inline std::unordered_map<std::string_view, handler_table_t> silent_map = {};
@@ -77,8 +93,8 @@ void interface_base::dispatch(wire::object_t obj, wire::msg_kind kind, uint16_t 
         return;
     }
 
-    auto impl = silent_map.find(found->second);
-    if (impl != silent_map.end())
+    auto impl = logging_map.find(found->second);
+    if (impl != logging_map.end())
     {
         if (opcode >= impl->second[kind].size())
         {
@@ -149,8 +165,15 @@ std::pair<wire::array_t, interface_base::bytes_t> interface_base::read_array(byt
     return {bytes.subspan(4, len), bytes.subspan(4 + padded)};
 }
 
-std::pair<wire::object_t, interface_base::bytes_t> interface_base::read_object_id(bytes_t bytes)
+std::pair<wire::object_t, interface_base::bytes_t> interface_base::read_object(bytes_t bytes)
 {
     auto val = *reinterpret_cast<wire::object_t*>(bytes.data());
     return {val, bytes.subspan(sizeof(val))};
+}
+
+std::pair<wire::fixed_t, interface_base::bytes_t> interface_base::read_fixed(bytes_t bytes)
+{
+    // todo impl real type
+    auto val = *reinterpret_cast<wire::fixed_t*>(bytes.data());
+    return {val, bytes.subspan(4)};
 }

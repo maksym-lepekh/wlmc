@@ -56,14 +56,24 @@ std::optional<fs::path> get_child_socket_path()
 void destroy_registry(wire::object_t, std::span<std::byte> args)
 {
     wire::object_t arg_registry;
-    std::tie(arg_registry, args) = interface_base::read_object_id(args);
+    std::tie(arg_registry, args) = interface_base::read_object(args);
     interface_base::on_deleted_object(arg_registry);
+}
+
+void set_silent(const char* interface, wire::msg_kind kind, size_t opcode)
+{
+    interface_base::logging_map[interface][kind][opcode] = interface_base::silent_map[interface][kind][opcode];
 }
 
 void register_wayland_interfaces()
 {
     proto::wayland::register_wl_interfaces();
     interface_base::silent_map["wl_fixes"][wire::request][proto::wayland::wl_fixes::request::destroy_registry] = destroy_registry;
+    interface_base::logging_map["wl_fixes"][wire::request][proto::wayland::wl_fixes::request::destroy_registry] = destroy_registry;
+
+    set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::commit);
+    set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::damage_buffer);
+    set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::attach);
 }
 
 int main(int argc, char** argv)
