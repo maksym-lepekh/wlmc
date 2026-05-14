@@ -14,6 +14,13 @@
 import observer;
 import interface_base;
 import proto_wayland;
+import proto_linux_dmabuf_v1;
+import proto_xdg_shell;
+import proto_linux_drm_syncobj_v1;
+import proto_presentation_time;
+import proto_color_management_v1;
+import proto_commit_timing_v1;
+import proto_fifo_v1;
 
 constexpr auto runtime_dir_var = "XDG_RUNTIME_DIR";
 constexpr auto wayland_display_var = "WAYLAND_DISPLAY";
@@ -68,6 +75,14 @@ void set_silent(const char* interface, wire::msg_kind kind, size_t opcode)
 void register_wayland_interfaces()
 {
     proto::wayland::register_wl_interfaces();
+    proto::linux_dmabuf_v1::register_wl_interfaces();
+    proto::xdg_shell::register_wl_interfaces();
+    proto::linux_drm_syncobj_v1::register_wl_interfaces();
+    proto::presentation_time::register_wl_interfaces();
+    proto::color_management_v1::register_wl_interfaces();
+    proto::commit_timing_v1::register_wl_interfaces();
+    proto::fifo_v1::register_wl_interfaces();
+
     interface_base::silent_map["wl_fixes"][wire::request][proto::wayland::wl_fixes::request::destroy_registry] = destroy_registry;
     interface_base::logging_map["wl_fixes"][wire::request][proto::wayland::wl_fixes::request::destroy_registry] = destroy_registry;
 

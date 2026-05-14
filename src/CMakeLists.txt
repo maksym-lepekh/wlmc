@@ -11,22 +11,25 @@ target_link_libraries(proto-gen PRIVATE
         Microsoft.GSL::GSL
 )
 
-function(add_generated_protocol arg_TARGET arg_INPUT_FILE)
-    get_filename_component(proto_name "${arg_INPUT_FILE}" NAME_WLE)
-    set(output "${CMAKE_CURRENT_BINARY_DIR}/proto/${proto_name}.cppm")
+function(add_generated_protocols arg_TARGET)
+    foreach (input ${ARGN})
+        get_filename_component(proto_name "${input}" NAME_WLE)
+        set(output "${CMAKE_CURRENT_BINARY_DIR}/proto/${proto_name}.cppm")
 
-    add_custom_command(
-            OUTPUT ${output}
-            DEPENDS proto-gen "${arg_INPUT_FILE}"
-            COMMAND proto-gen "${arg_INPUT_FILE}" "${output}"
-            COMMENT "Generating ${output}..."
-    )
+        add_custom_command(
+                OUTPUT ${output}
+                DEPENDS proto-gen "${input}"
+                COMMAND proto-gen "${input}" "${output}"
+                WORKING_DIRECTORY ${CMAKE_CURRENT_SOURCE_DIR}
+                COMMENT "Generating ${output}..."
+        )
 
-    target_sources(${arg_TARGET} PUBLIC
-            FILE_SET CXX_MODULES
-            BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
-            FILES ${output}
-    )
+        target_sources(${arg_TARGET} PUBLIC
+                FILE_SET CXX_MODULES
+                BASE_DIRS ${CMAKE_CURRENT_SOURCE_DIR} ${CMAKE_CURRENT_BINARY_DIR}
+                FILES ${output}
+        )
+    endforeach ()
 endfunction()
 
 add_executable(wlmc
@@ -46,4 +49,14 @@ target_link_libraries(wlmc PRIVATE
         Microsoft.GSL::GSL
 )
 
-add_generated_protocol(wlmc ${CMAKE_SOURCE_DIR}/protocols/core/wayland.xml)
+add_generated_protocols(wlmc
+        protocols/core/wayland.xml
+        protocols/stable/linux-dmabuf-v1.xml
+        protocols/stable/viewporter.xml
+        protocols/stable/xdg-shell.xml
+        protocols/stable/presentation-time.xml
+        protocols/staging/linux-drm-syncobj-v1.xml
+        protocols/staging/color-management-v1.xml
+        protocols/staging/commit-timing-v1.xml
+        protocols/staging/fifo-v1.xml
+)

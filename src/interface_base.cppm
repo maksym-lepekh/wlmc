@@ -12,7 +12,42 @@ export namespace wire
     using new_id_t = object_t;
     using string_t = std::string_view;
     using array_t = std::span<std::byte>;
-    using fixed_t = std::uint32_t;
+
+    struct fixed_t
+    {
+        double double_repr;
+        uint_t fixed_repr;
+
+        fixed_t(): double_repr(0.0), fixed_repr(0.0) {}
+
+        explicit fixed_t(uint_t f)
+        {
+            union { double d; std::int64_t i; } u{};
+            u.i = ((1023LL + 44LL) << 52) + (1LL << 51) + f;
+            double_repr = u.d - (3LL << 43);
+            fixed_repr = f;
+        }
+
+        explicit fixed_t(double f)
+        {
+            union { double d; int64_t i; } u{};
+            u.d = f + (3LL << (51 - 8));
+            double_repr = f;
+            fixed_repr = u.i;
+        }
+
+        fixed_t& operator=(const fixed_t&) = default;
+
+        explicit operator double() const
+        {
+            return double_repr;
+        }
+
+        explicit operator uint_t() const
+        {
+            return fixed_repr;
+        }
+    };
 
     enum msg_kind
     {
@@ -48,6 +83,20 @@ template <> struct fmt::formatter<wire::array_t>
     constexpr auto format (wire::array_t const& a, Context& ctx) const
     {
         return format_to(ctx.out(), "[{} bytes]", a.size());
+    }
+};
+
+template <> struct fmt::formatter<wire::fixed_t>
+{
+    static constexpr auto parse (const format_parse_context& ctx)
+    {
+        return ctx.begin();
+    }
+
+    template <typename Context>
+    constexpr auto format (wire::fixed_t const& f, Context& ctx) const
+    {
+        return format_to(ctx.out(), "{}", static_cast<double>(f));
     }
 };
 
@@ -119,6 +168,11 @@ void interface_base::on_new_object(wire::object_t obj, std::string_view interfac
 {
     spdlog::debug("on_new_object: {} {}", obj, interface_name);
     known_objects[obj] = interface_name;
+
+    if (silent_map.find(interface_name) == silent_map.end())
+    {
+        spdlog::warn("New object {} with unknown interface {}", obj, interface_name);
+    }
 }
 
 void interface_base::on_deleted_object(wire::object_t obj)
@@ -173,7 +227,6 @@ std::pair<wire::object_t, interface_base::bytes_t> interface_base::read_object(b
 
 std::pair<wire::fixed_t, interface_base::bytes_t> interface_base::read_fixed(bytes_t bytes)
 {
-    // todo impl real type
-    auto val = *reinterpret_cast<wire::fixed_t*>(bytes.data());
+    auto val = wire::fixed_t(*reinterpret_cast<wire::uint_t*>(bytes.data()));
     return {val, bytes.subspan(4)};
 }
