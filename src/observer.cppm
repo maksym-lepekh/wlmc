@@ -10,26 +10,29 @@ import interface_base;
 using namespace std::literals;
 
 
-size_t inspect_message(std::span<std::byte> data, wire::msg_kind kind)
+namespace
 {
-    auto cursor = data.data();
-
-    const auto obj = *reinterpret_cast<wire::object_t*>(cursor);
-    cursor += sizeof(wire::object_t);
-
-    const auto len_opcode = *reinterpret_cast<std::uint32_t*>(cursor);
-    const auto len = len_opcode >> 16;
-    const auto opcode = len_opcode & 0x00FF;
-    interface_base::dispatch(obj, kind, opcode, data.subspan(8, len - 8));
-    return len;
-}
-
-void inspect_packet(std::span<std::byte> data, wire::msg_kind kind)
-{
-    auto offset = 0zu;
-    while (offset < data.size())
+    size_t inspect_message(std::span<std::byte> data, wire::msg_kind kind)
     {
-        offset += inspect_message(data.subspan(offset), kind);
+        auto cursor = data.data();
+
+        const auto obj = *reinterpret_cast<wire::object_t*>(cursor);
+        cursor += sizeof(wire::object_t);
+
+        const auto len_opcode = *reinterpret_cast<std::uint32_t*>(cursor);
+        const auto len = len_opcode >> 16;
+        const auto opcode = len_opcode & 0x00FF;
+        interface_base::dispatch(obj, kind, opcode, data.subspan(8, len - 8));
+        return len;
+    }
+
+    void inspect_packet(std::span<std::byte> data, wire::msg_kind kind)
+    {
+        auto offset = 0zu;
+        while (offset < data.size())
+        {
+            offset += inspect_message(data.subspan(offset), kind);
+        }
     }
 }
 
@@ -98,7 +101,7 @@ export void run_loop(const std::stop_token& stop, int server, int child)
 
         if ((fds[0].revents | fds[1].revents) & (POLLHUP | POLLERR | POLLNVAL))
         {
-            spdlog::warn("poll {} {} returned {}, child {:016b}, server {:016b}", child, server, ret, fds[0].revents, fds[1].revents);
+            spdlog::info("poll {} {} returned {}, child {:016b}, server {:016b}", child, server, ret, fds[0].revents, fds[1].revents);
             return;
         }
 

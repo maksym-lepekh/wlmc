@@ -104,7 +104,7 @@ export class interface_base
 {
 public:
     using bytes_t = std::span<std::byte>;
-    using message_handler_t = void(*)(wire::object_t, bytes_t);
+    using message_handler_t = bytes_t(*)(wire::object_t, bytes_t);
     using handler_vector_t = std::inplace_vector<message_handler_t, 32>;
     using handler_table_t = std::array<handler_vector_t, 2>;
 
@@ -142,15 +142,22 @@ void interface_base::dispatch(wire::object_t obj, wire::msg_kind kind, uint16_t 
         return;
     }
 
-    auto impl = logging_map.find(found->second);
-    if (impl != logging_map.end())
+    auto& impl_map = silent_map;
+    auto impl = impl_map.find(found->second);
+    if (impl != impl_map.end())
     {
         if (opcode >= impl->second[kind].size())
         {
             spdlog::error("Opcode {} out of range of {}'s vtable. Object: {}", opcode, impl->first, obj);
             return;
         }
-        impl->second[kind][opcode](obj, args);
+        auto replacement = impl->second[kind][opcode](obj, args);
+        if (!replacement.empty())
+        {
+            spdlog::debug("Replacing {} bytes", replacement.size());
+            assert(args.size() == replacement.size());
+            std::memcpy(args.data(), replacement.data(), replacement.size());
+        }
     }
     else
     {
@@ -207,7 +214,12 @@ std::pair<wire::int_t, interface_base::bytes_t> interface_base::read_int(bytes_t
 
 std::pair<wire::string_t, interface_base::bytes_t> interface_base::read_string(bytes_t bytes)
 {
-    auto len = *reinterpret_cast<std::uint32_t*>(bytes.data()) - 1;
+    auto byte_len = *reinterpret_cast<std::uint32_t*>(bytes.data());
+    if (byte_len == 0)
+    {
+        return {{}, bytes.subspan(sizeof(byte_len))};
+    }
+    auto len = byte_len - 1;
     auto padded = 4 * (len / 4) + (len % 4 ? 4 : 0);
     return {std::string_view{reinterpret_cast<const char*>(bytes.data() + 4), len}, bytes.subspan(4 + padded)};
 }

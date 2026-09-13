@@ -64,7 +64,7 @@ void emit_begin_handlers_array(dest_t dest)
 void emit_silent_handler(dest_t dest, pugi::xml_node& node)
 {
     constexpr auto indent = "                "sv;
-    std::format_to(dest, "{}{}\n{}{{\n", indent, "[](wire::object_t obj, std::span<std::byte> args)", indent);
+    std::format_to(dest, "{}{}\n{}{{\n", indent, "[](wire::object_t obj, bytes_t args)", indent);
 
     for (auto& arg : node.children())
     {
@@ -127,6 +127,7 @@ void emit_silent_handler(dest_t dest, pugi::xml_node& node)
         std::format_to(dest, "{}    on_deleted_object(obj);\n", indent);
     }
 
+    std::format_to(dest, "{}    return bytes_t{{}};\n", indent);
     std::format_to(dest, "{}}},\n", indent);
 }
 
@@ -151,7 +152,7 @@ void emit_begin_logging_handlers(dest_t dest)
 void emit_logging_handler(dest_t dest, pugi::xml_node& node)
 {
     constexpr auto indent = "                "sv;
-    std::format_to(dest, "{}{}\n{}{{\n", indent, "[](wire::object_t obj, std::span<std::byte> args)", indent);
+    std::format_to(dest, "{}{}\n{}{{\n", indent, "[](wire::object_t obj, bytes_t args)", indent);
 
     for (auto& arg : node.children())
     {
@@ -254,6 +255,7 @@ void emit_logging_handler(dest_t dest, pugi::xml_node& node)
         std::format_to(dest, "{}    on_deleted_object(obj);\n", indent);
     }
 
+    std::format_to(dest, "{}    return bytes_t{{}};\n", indent);
     std::format_to(dest, "{}}},\n", indent);
 }
 

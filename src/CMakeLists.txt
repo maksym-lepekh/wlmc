@@ -42,6 +42,7 @@ target_sources(wlmc PUBLIC
         FILES
         observer.cppm
         interface_base.cppm
+        intercept.cppm
 )
 
 target_link_libraries(wlmc PRIVATE
@@ -52,11 +53,20 @@ target_link_libraries(wlmc PRIVATE
 add_generated_protocols(wlmc
         protocols/core/wayland.xml
         protocols/stable/linux-dmabuf-v1.xml
+        protocols/stable/presentation-time.xml
         protocols/stable/viewporter.xml
         protocols/stable/xdg-shell.xml
-        protocols/stable/presentation-time.xml
-        protocols/staging/linux-drm-syncobj-v1.xml
         protocols/staging/color-management-v1.xml
         protocols/staging/commit-timing-v1.xml
+        protocols/staging/cursor-shape-v1.xml
         protocols/staging/fifo-v1.xml
+        protocols/staging/fractional-scale-v1.xml
+        protocols/staging/linux-drm-syncobj-v1.xml
+        protocols/staging/pointer-warp-v1.xml
+        protocols/staging/xdg-activation-v1.xml
+        protocols/staging/xdg-toplevel-tag-v1.xml
+        protocols/unstable/keyboard-shortcuts-inhibit-unstable-v1.xml
+        protocols/unstable/pointer-constraints-unstable-v1.xml
+        protocols/unstable/relative-pointer-unstable-v1.xml
+        protocols/unstable/xdg-output-unstable-v1.xml
 )

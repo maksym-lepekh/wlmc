@@ -13,6 +13,8 @@
 
 import observer;
 import interface_base;
+import intercept;
+
 import proto_wayland;
 import proto_linux_dmabuf_v1;
 import proto_xdg_shell;
@@ -21,6 +23,16 @@ import proto_presentation_time;
 import proto_color_management_v1;
 import proto_commit_timing_v1;
 import proto_fifo_v1;
+import proto_viewporter;
+import proto_fractional_scale_v1;
+import proto_xdg_output_unstable_v1;
+import proto_pointer_warp_v1;
+import proto_pointer_constraints_unstable_v1;
+import proto_cursor_shape_v1;
+import proto_xdg_toplevel_tag_v1;
+import proto_xdg_activation_v1;
+import proto_keyboard_shortcuts_inhibit_unstable_v1;
+import proto_relative_pointer_unstable_v1;
 
 constexpr auto runtime_dir_var = "XDG_RUNTIME_DIR";
 constexpr auto wayland_display_var = "WAYLAND_DISPLAY";
@@ -60,11 +72,12 @@ std::optional<fs::path> get_child_socket_path()
     return fs::path{runtime_dir} / std::format("wlmc-{}", ::getpid());
 }
 
-void destroy_registry(wire::object_t, std::span<std::byte> args)
+interface_base::bytes_t destroy_registry(wire::object_t, interface_base::bytes_t args)
 {
     wire::object_t arg_registry;
     std::tie(arg_registry, args) = interface_base::read_object(args);
     interface_base::on_deleted_object(arg_registry);
+    return {};
 }
 
 void set_silent(const char* interface, wire::msg_kind kind, size_t opcode)
@@ -82,17 +95,65 @@ void register_wayland_interfaces()
     proto::color_management_v1::register_wl_interfaces();
     proto::commit_timing_v1::register_wl_interfaces();
     proto::fifo_v1::register_wl_interfaces();
+    proto::viewporter::register_wl_interfaces();
+    proto::fractional_scale_v1::register_wl_interfaces();
+    proto::xdg_output_unstable_v1::register_wl_interfaces();
+    proto::pointer_warp_v1::register_wl_interfaces();
+    proto::pointer_constraints_unstable_v1::register_wl_interfaces();
+    proto::cursor_shape_v1::register_wl_interfaces();
+    proto::xdg_toplevel_tag_v1::register_wl_interfaces();
+    proto::xdg_activation_v1::register_wl_interfaces();
+    proto::keyboard_shortcuts_inhibit_unstable_v1::register_wl_interfaces();
+    proto::relative_pointer_unstable_v1::register_wl_interfaces();
 
     interface_base::silent_map["wl_fixes"][wire::request][proto::wayland::wl_fixes::request::destroy_registry] = destroy_registry;
     interface_base::logging_map["wl_fixes"][wire::request][proto::wayland::wl_fixes::request::destroy_registry] = destroy_registry;
 
-    set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::commit);
+    // set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::commit);
+    // set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::damage_buffer);
+    // set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::attach);
+
+    // set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::set_input_region);
     set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::damage_buffer);
-    set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::attach);
+    // set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::attach);
+    set_silent("wl_surface", wire::request, proto::wayland::wl_surface::request::commit);
+    // set_silent("wl_pointer", wire::event, proto::wayland::wl_pointer::event::frame);
+    set_silent("xdg_wm_base", wire::event, proto::xdg_shell::xdg_wm_base::event::ping);
+    set_silent("xdg_wm_base", wire::request, proto::xdg_shell::xdg_wm_base::request::pong);
+    // set_silent("wp_viewport", wire::request, proto::viewporter::wp_viewport::request::set_source);
+    // set_silent("wl_buffer", wire::event, proto::wayland::wl_buffer::event::release);
+
+
+    // set_silent("xdg_surface", wire::request, proto::xdg_shell::xdg_surface::request::set_window_geometry);
+    // set_silent("xdg_toplevel", wire::request, proto::xdg_shell::xdg_toplevel::request::set_min_size);
+    // set_silent("xdg_toplevel", wire::request, proto::xdg_shell::xdg_toplevel::request::set_max_size);
+
+
+    auto& impl_map = interface_base::silent_map;
+    impl_map["wp_fractional_scale_v1"][wire::event][proto::fractional_scale_v1::wp_fractional_scale_v1::event::preferred_scale] = fractional_scale_preferred_scale;
+    impl_map["wl_output"][wire::event][proto::wayland::wl_output::event::mode] = wl_output_mode;
+    impl_map["wl_output"][wire::event][proto::wayland::wl_output::event::scale] = wl_output_scale;
+
+    impl_map["xdg_toplevel"][wire::event][proto::xdg_shell::xdg_toplevel::event::configure] = toplevel_configure;
+    impl_map["wp_viewport"][wire::request][proto::viewporter::wp_viewport::request::set_destination] = viewport_set_destination;
+    impl_map["xdg_surface"][wire::request][proto::xdg_shell::xdg_surface::request::set_window_geometry] = xdg_set_window_geometry;
+    impl_map["xdg_toplevel"][wire::request][proto::xdg_shell::xdg_toplevel::request::set_min_size] = xdg_set_min_size;
+    impl_map["xdg_toplevel"][wire::request][proto::xdg_shell::xdg_toplevel::request::set_max_size] = xdg_set_max_size;
+
+    impl_map["wl_region"][wire::request][proto::wayland::wl_region::request::add] = region_add;
+
+    impl_map["wl_pointer"][wire::event][proto::wayland::wl_pointer::event::motion] = pointer_motion;
+    impl_map["xdg_toplevel"][wire::request][proto::xdg_shell::xdg_toplevel::request::set_fullscreen] = xdg_set_fullscreen;
+    impl_map["xdg_toplevel"][wire::request][proto::xdg_shell::xdg_toplevel::request::unset_fullscreen] = xdg_unset_fullscreen;
+    impl_map["zxdg_output_v1"][wire::event][proto::xdg_output_unstable_v1::zxdg_output_v1::event::logical_size] = logical_size;
+
+    impl_map["zwp_locked_pointer_v1"][wire::request][proto::pointer_constraints_unstable_v1::zwp_locked_pointer_v1::request::set_cursor_position_hint] = set_cursor_position_hint;
 }
 
 int main(int argc, char** argv)
 {
+    spdlog::set_level(spdlog::level::warn);
+
     auto server_soket_path = get_server_soket_path();
     if (!server_soket_path)
     {
@@ -171,7 +232,7 @@ int main(int argc, char** argv)
             auto ret = ::poll(&pfd, 1, acceptor_poll_timeout);
             if (ret == -1)
             {
-                spdlog::info("Poll failed: {} {}", errno, strerror(errno));
+                spdlog::warn("Poll failed: {} {}", errno, strerror(errno));
             }
             if (ret == 0)
             {
