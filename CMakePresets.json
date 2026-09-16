@@ -21,7 +21,9 @@
         "common"
       ],
       "cacheVariables": {
-        "CMAKE_CXX_COMPILER": "clang++-22"
+        "CMAKE_BUILD_TYPE": "Release",
+        "CMAKE_CXX_COMPILER": "clang++-22",
+        "CMAKE_EXPORT_COMPILE_COMMANDS": "ON"
       }
     }
   ],

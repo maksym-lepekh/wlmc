@@ -8,7 +8,7 @@ using dest_t = std::ostreambuf_iterator<char>;
 void emit_begin_module(dest_t& dest, pugi::xml_node& node)
 {
     constexpr auto text = "module;\n#include <spdlog/spdlog.h>\n"sv;
-    constexpr auto text2 = "import std;\nimport interface_base;\nusing namespace std::literals;\n\n"sv;
+    constexpr auto text2 = "import std;\nimport interface_base;\nimport logging;\nusing namespace std::literals;\n\n"sv;
 
     std::copy(text.begin(), text.end(), dest);
     std::format_to(dest, "export module proto_{};\n", node.attribute("name").as_string());
@@ -224,7 +224,7 @@ void emit_logging_handler(dest_t dest, pugi::xml_node& node)
     // "[ req ] {}<wl_display>::get_registry(registry={}<wl_registry>)"
 
     auto kind = node.name() == "request"sv ? "[ req ]" : "[event]";
-    std::format_to(dest, "{}    spdlog::info(\"{} {{}}<{}>::{}(", indent, kind, node.parent().attribute("name").as_string(), node.attribute("name").as_string());
+    std::format_to(dest, "{}    thread_logger().info(\"{} {{}}<{}>::{}(", indent, kind, node.parent().attribute("name").as_string(), node.attribute("name").as_string());
     bool first = true;
     for (auto& [arg_name, var_name, iface_suffix, runtime_iface]: processed_args)
     {

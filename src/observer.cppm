@@ -2,6 +2,7 @@ module;
 #include <spdlog/spdlog.h>
 #include <sys/socket.h>
 #include <poll.h>
+#include <unistd.h>
 
 export module observer;
 import std;
@@ -36,14 +37,14 @@ namespace
     }
 }
 
-export void run_loop(const std::stop_token& stop, int server, int child)
+export void run_loop(const std::stop_token& stop, int server, int child, spdlog::logger& logger)
 {
     interface_base::on_new_object(wire::object_t{1}, "wl_display");
 
     auto io_buf = std::array<std::byte, 16 * 1024>{};
     auto anc_buf = std::array<std::byte, 1024>{};
 
-    auto forward_msg = [&io_buf, &anc_buf](int from, int to, wire::msg_kind kind)
+    auto forward_msg = [&io_buf, &anc_buf, &logger](int from, int to, wire::msg_kind kind)
     {
         auto socket_msg = msghdr{};
         auto iov = iovec{.iov_base = io_buf.data(), .iov_len = io_buf.size()};
@@ -55,13 +56,13 @@ export void run_loop(const std::stop_token& stop, int server, int child)
         auto bytes = ::recvmsg(from, &socket_msg, 0);
         if (bytes < 0)
         {
-            spdlog::error("recvmsg failed {} {}", errno, strerror(errno));
+            logger.error("recvmsg failed {} {}", errno, strerror(errno));
             return;
         }
-        spdlog::trace("Read from {}: {} bytes", from, bytes);
+        logger.trace("Read from {}: {} bytes", from, bytes);
         if (bytes % 4 != 0)
         {
-            spdlog::warn("Non-32 bit message");
+            logger.warn("Non-32 bit message");
         }
 
         iov.iov_len = bytes;
@@ -70,10 +71,19 @@ export void run_loop(const std::stop_token& stop, int server, int child)
         bytes = sendmsg(to, &socket_msg, MSG_NOSIGNAL);
         if (bytes < 0)
         {
-            spdlog::error("sendmsg failed {} {}", errno, strerror(errno));
+            logger.error("sendmsg failed {} {}", errno, strerror(errno));
             return;
         }
-        spdlog::trace("Send to {}: {} bytes", to, bytes);
+        logger.trace("Send to {}: {} bytes", to, bytes);
+
+        for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&socket_msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(&socket_msg, cmsg)) {
+            if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS) {
+                int received_fd;
+                memcpy(&received_fd, CMSG_DATA(cmsg), sizeof(int));
+                logger.debug("FD from message: {}", received_fd);
+                ::close(received_fd);
+            }
+        }
     };
 
     while (!stop.stop_requested())
@@ -86,7 +96,7 @@ export void run_loop(const std::stop_token& stop, int server, int child)
         auto ret = poll(fds.data(), fds.size(), -1);
         if (ret < 0)
         {
-            spdlog::error("poll failed {} {}", errno, strerror(errno));
+            logger.error("poll failed {} {}", errno, strerror(errno));
             if (errno != EINTR)
             {
                 return;
@@ -101,7 +111,7 @@ export void run_loop(const std::stop_token& stop, int server, int child)
 
         if ((fds[0].revents | fds[1].revents) & (POLLHUP | POLLERR | POLLNVAL))
         {
-            spdlog::info("poll {} {} returned {}, child {:016b}, server {:016b}", child, server, ret, fds[0].revents, fds[1].revents);
+            logger.debug("poll {} {} returned {}, child {:016b}, server {:016b}", child, server, ret, fds[0].revents, fds[1].revents);
             return;
         }
 
@@ -114,5 +124,5 @@ export void run_loop(const std::stop_token& stop, int server, int child)
             forward_msg(server, child, wire::msg_kind::event);
         }
     }
-    spdlog::info("Stop flag is true");
+    logger.info("Stop flag is true");
 }

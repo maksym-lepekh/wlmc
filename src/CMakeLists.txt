@@ -43,6 +43,7 @@ target_sources(wlmc PUBLIC
         observer.cppm
         interface_base.cppm
         intercept.cppm
+        logging.cppm
 )
 
 target_link_libraries(wlmc PRIVATE

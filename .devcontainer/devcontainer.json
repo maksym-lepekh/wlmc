@@ -2,6 +2,7 @@
   "build": {
     "dockerfile": "Dockerfile"
   },
+  "containerUser": "ubuntu",
   "customizations": {
     "vscode": {
       "extensions": [

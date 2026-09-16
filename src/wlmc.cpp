@@ -1,3 +1,4 @@
+#include <exception>
 #include <thread>
 #include <filesystem>
 
@@ -9,11 +10,13 @@
 
 #include <gsl/util>
 #include <spdlog/spdlog.h>
+#include <spdlog/sinks/stdout_color_sinks.h>
 #include "control_flow.hpp"
 
 import observer;
 import interface_base;
 import intercept;
+import logging;
 
 import proto_wayland;
 import proto_linux_dmabuf_v1;
@@ -85,6 +88,11 @@ void set_silent(const char* interface, wire::msg_kind kind, size_t opcode)
     interface_base::logging_map[interface][kind][opcode] = interface_base::silent_map[interface][kind][opcode];
 }
 
+void set_logged(const char* interface, wire::msg_kind kind, size_t opcode)
+{
+    interface_base::silent_map[interface][kind][opcode] = interface_base::logging_map[interface][kind][opcode];
+}
+
 void register_wayland_interfaces()
 {
     proto::wayland::register_wl_interfaces();
@@ -128,6 +136,7 @@ void register_wayland_interfaces()
     // set_silent("xdg_toplevel", wire::request, proto::xdg_shell::xdg_toplevel::request::set_min_size);
     // set_silent("xdg_toplevel", wire::request, proto::xdg_shell::xdg_toplevel::request::set_max_size);
 
+    // set_logged("wl_shm", wire::request, proto::wayland::wl_shm::request::create_pool);
 
     auto& impl_map = interface_base::silent_map;
     impl_map["wp_fractional_scale_v1"][wire::event][proto::fractional_scale_v1::wp_fractional_scale_v1::event::preferred_scale] = fractional_scale_preferred_scale;
@@ -152,7 +161,7 @@ void register_wayland_interfaces()
 
 int main(int argc, char** argv)
 {
-    spdlog::set_level(spdlog::level::warn);
+    spdlog::set_level(spdlog::level::info);
 
     auto server_soket_path = get_server_soket_path();
     if (!server_soket_path)
@@ -225,6 +234,9 @@ int main(int argc, char** argv)
     register_wayland_interfaces();
     auto acceptor = std::jthread{[child_fd, socket_path = *server_soket_path](const std::stop_token& token)
     {
+        set_thread_logger("acceptor");
+        auto& logger = thread_logger();
+
         auto child_threads = std::vector<std::jthread>{};
         while (!token.stop_requested())
         {
@@ -232,7 +244,7 @@ int main(int argc, char** argv)
             auto ret = ::poll(&pfd, 1, acceptor_poll_timeout);
             if (ret == -1)
             {
-                spdlog::warn("Poll failed: {} {}", errno, strerror(errno));
+                logger.warn("Poll failed: {} {}", errno, strerror(errno));
             }
             if (ret == 0)
             {
@@ -240,18 +252,18 @@ int main(int argc, char** argv)
             }
             if (pfd.revents & (POLLERR | POLLHUP | POLLNVAL))
             {
-                spdlog::error("Error in polled fd: {:016b}", pfd.revents);
+                logger.error("Error in polled fd: {:016b}", pfd.revents);
                 break;
             }
 
-            spdlog::info("Calling accept on {}", child_fd);
+            logger.debug("Calling accept on {}", child_fd);
             auto conn_fd = ::accept(child_fd, nullptr, nullptr);
             if (conn_fd < 0)
             {
-                spdlog::error("Accept failed: {} {}", errno, strerror(errno));
+                logger.error("Accept failed: {} {}", errno, strerror(errno));
                 continue;
             }
-            spdlog::info("Accepted new connection: {}", conn_fd);
+            logger.info("Accepted new connection: {}", conn_fd);
             child_threads.emplace_back([socket_path, conn_fd](const std::stop_token& token)
             {
                 FINALLY{ close(conn_fd); };
@@ -264,25 +276,28 @@ int main(int argc, char** argv)
                 }
                 FINALLY{ close(server_fd); };
 
+                set_thread_logger(std::format("worker {}", conn_fd));
+                auto& logger = thread_logger();
+
                 auto srv_addr = sockaddr_un{};
                 srv_addr.sun_family = AF_UNIX;
                 std::strncpy(srv_addr.sun_path, socket_path.c_str(), sizeof(srv_addr.sun_path));
                 if (connect(server_fd, reinterpret_cast<sockaddr*>(&srv_addr), sizeof(srv_addr)) == -1)
                 {
-                    spdlog::error("Connect to server failed: {} {}", errno, strerror(errno));
+                    logger.error("Connect to server failed: {} {}", errno, strerror(errno));
                     return;
                 }
 
-                spdlog::info("New worker thread running for {} {}", server_fd, conn_fd);
+                logger.info("New worker thread running for {} {}", server_fd, conn_fd);
 
-                run_loop(token, server_fd, conn_fd);
-                spdlog::info("Worker thread for {} {} ended", server_fd, conn_fd);
+                run_loop(token, server_fd, conn_fd, logger);
+                logger.info("Worker thread for {} {} ended", server_fd, conn_fd);
             });
         }
-        spdlog::info("Acceptor loop ended");
+        logger.info("Acceptor loop ended");
         for (auto& thread : child_threads)
         {
-            spdlog::info("Requesting stop...");
+            logger.debug("Requesting stop...");
             thread.request_stop();
         }
     }};
@@ -291,7 +306,7 @@ int main(int argc, char** argv)
     auto wait_ret = ::waitpid(child_pid, &child_status, 0);
     spdlog::info("waitpid returned {}, status {} ({:032b})", wait_ret, child_status, child_status);
     acceptor.request_stop();
-    spdlog::info("Requested stop, joining...");
+    spdlog::debug("Requested stop, joining...");
     acceptor.join();
     if (WIFEXITED(child_status)) {
         return WEXITSTATUS(child_status);
