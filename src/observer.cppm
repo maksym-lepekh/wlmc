@@ -1,6 +1,8 @@
 module;
+#include "control_flow.hpp"
 #include <spdlog/spdlog.h>
 #include <sys/socket.h>
+
 #include <poll.h>
 #include <unistd.h>
 
@@ -13,6 +15,33 @@ using namespace std::literals;
 
 namespace
 {
+    void close_received_fds(msghdr& message, spdlog::logger& logger)
+    {
+        for (auto* cmsg = CMSG_FIRSTHDR(&message);
+             cmsg != nullptr;
+             cmsg = CMSG_NXTHDR(&message, cmsg))
+        {
+            if (cmsg->cmsg_level != SOL_SOCKET || cmsg->cmsg_type != SCM_RIGHTS)
+            {
+                continue;
+            }
+
+            if (cmsg->cmsg_len < CMSG_LEN(0))
+            {
+                logger.error("Invalid SCM_RIGHTS control message length: {}", cmsg->cmsg_len);
+                continue;
+            }
+            const auto payload_size = cmsg->cmsg_len - CMSG_LEN(0);
+            const auto fd_count = payload_size / sizeof(int);
+            auto* received_fds = reinterpret_cast<int*>(CMSG_DATA(cmsg));
+            for (size_t i = 0; i < fd_count; ++i)
+            {
+                logger.debug("FD from message: {}", received_fds[i]);
+                ::close(received_fds[i]);
+            }
+        }
+    }
+
     size_t inspect_message(std::span<std::byte> data, wire::msg_kind kind)
     {
         auto cursor = data.data();
@@ -42,7 +71,8 @@ export void run_loop(const std::stop_token& stop, int server, int child, spdlog:
     interface_base::on_new_object(wire::object_t{1}, "wl_display");
 
     auto io_buf = std::array<std::byte, 16 * 1024>{};
-    auto anc_buf = std::array<std::byte, 1024>{};
+    // 253 is SCM_MAX_FD on Linux. There's no official header for this constant
+    auto anc_buf = std::array<std::byte, CMSG_SPACE(253 * sizeof(int))>{};
 
     auto forward_msg = [&io_buf, &anc_buf, &logger](int from, int to, wire::msg_kind kind)
     {
@@ -53,11 +83,26 @@ export void run_loop(const std::stop_token& stop, int server, int child, spdlog:
         socket_msg.msg_control = anc_buf.data();
         socket_msg.msg_controllen = anc_buf.size();
 
-        auto bytes = ::recvmsg(from, &socket_msg, 0);
+        auto bytes = ::recvmsg(from, &socket_msg, MSG_CMSG_CLOEXEC);
         if (bytes < 0)
         {
             logger.error("recvmsg failed {} {}", errno, strerror(errno));
-            return;
+            return false;
+        }
+        if (bytes == 0)
+        {
+            logger.debug("Connection {} closed", from);
+            return false;
+        }
+
+        FINALLY {
+            close_received_fds(socket_msg, logger);
+        };
+
+        if ((socket_msg.msg_flags & MSG_CTRUNC) != 0)
+        {
+            logger.error("Ancillary data from {} was truncated", from);
+            return false;
         }
         logger.trace("Read from {}: {} bytes", from, bytes);
         if (bytes % 4 != 0)
@@ -72,18 +117,10 @@ export void run_loop(const std::stop_token& stop, int server, int child, spdlog:
         if (bytes < 0)
         {
             logger.error("sendmsg failed {} {}", errno, strerror(errno));
-            return;
+            return false;
         }
         logger.trace("Send to {}: {} bytes", to, bytes);
-
-        for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&socket_msg); cmsg != nullptr; cmsg = CMSG_NXTHDR(&socket_msg, cmsg)) {
-            if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SCM_RIGHTS) {
-                int received_fd;
-                memcpy(&received_fd, CMSG_DATA(cmsg), sizeof(int));
-                logger.debug("FD from message: {}", received_fd);
-                ::close(received_fd);
-            }
-        }
+        return true;
     };
 
     while (!stop.stop_requested())
@@ -117,11 +154,17 @@ export void run_loop(const std::stop_token& stop, int server, int child, spdlog:
 
         if (fds[0].revents & POLLIN)
         {
-            forward_msg(child, server, wire::msg_kind::request);
+            if (!forward_msg(child, server, wire::msg_kind::request))
+            {
+                return;
+            }
         }
         if (fds[1].revents & POLLIN)
         {
-            forward_msg(server, child, wire::msg_kind::event);
+            if (!forward_msg(server, child, wire::msg_kind::event))
+            {
+                return;
+            }
         }
     }
     logger.info("Stop flag is true");

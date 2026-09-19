@@ -263,7 +263,7 @@ int main(int argc, char** argv)
                 logger.error("Accept failed: {} {}", errno, strerror(errno));
                 continue;
             }
-            logger.info("Accepted new connection: {}", conn_fd);
+            logger.debug("Accepted new connection: {}", conn_fd);
             child_threads.emplace_back([socket_path, conn_fd](const std::stop_token& token)
             {
                 FINALLY{ close(conn_fd); };
@@ -288,10 +288,10 @@ int main(int argc, char** argv)
                     return;
                 }
 
-                logger.info("New worker thread running for {} {}", server_fd, conn_fd);
+                logger.debug("New worker thread running for {} {}", server_fd, conn_fd);
 
                 run_loop(token, server_fd, conn_fd, logger);
-                logger.info("Worker thread for {} {} ended", server_fd, conn_fd);
+                logger.debug("Worker thread for {} {} ended", server_fd, conn_fd);
             });
         }
         logger.info("Acceptor loop ended");
